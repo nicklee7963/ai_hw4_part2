@@ -7,7 +7,6 @@ import sys
 # 匯入你的支線模組
 from simulate import Player
 from mini_typing_game import quick_reaction_game_strict
-# [修改] 這裡要多匯入 setup_openai
 from mini_training_game import start_training_session, setup_openai
 
 # 嘗試匯入 OpenAI client，用於生成結局
@@ -21,17 +20,16 @@ except ImportError:
 SAVE_DIR = "saves"  # 存檔資料夾
 MAX_SAVES = 4       # 最大存檔數
 
-# [新功能] 遊戲難度設定
-# time: 每個字母給予的秒數
+# 遊戲難度設定
 DIFFICULTY_SETTINGS = {
     1: {"name": "簡單", "time": 1.0},
     2: {"name": "普通", "time": 0.75},
     3: {"name": "難",   "time": 0.50},
     4: {"name": "困難", "time": 0.25},
-    5: {"name": "屌炸天", "time": 0.10} # 0.1秒
+    5: {"name": "屌炸天", "time": 0.10}
 }
 
-# 定義五大魔王 (難度由低到高)
+# 定義五大魔王
 DEMON_KINGS_DATA = [
     {"id": 0, "name": "史萊姆王·波波", "title": "【貪婪的】", "deed": "偷走了村莊所有的蛋白粉，讓村民肌肉萎縮。", "hp": 1, "word_len": 3, "difficulty": 1},
     {"id": 1, "name": "哥布林健身教練", "title": "【暴虐的】", "deed": "強迫路人做姿勢錯誤的深蹲，導致大家膝蓋受傷。", "hp": 2, "word_len": 4, "difficulty": 2},
@@ -44,7 +42,7 @@ class GameState:
     def __init__(self, player, slot_id, difficulty_lv=2):
         self.player = player
         self.slot_id = slot_id 
-        self.difficulty_lv = difficulty_lv # 記錄選擇的難度 (1-5)
+        self.difficulty_lv = difficulty_lv 
         self.bosses = DEMON_KINGS_DATA.copy()
         self.defeated_bosses = []
 
@@ -68,7 +66,6 @@ def get_save_filename(slot_id):
     return os.path.join(SAVE_DIR, f"save_{slot_id}.pkl")
 
 def get_slot_info(slot_id):
-    """讀取存檔摘要，顯示名稱、進度、難度"""
     filename = get_save_filename(slot_id)
     if os.path.exists(filename):
         try:
@@ -76,11 +73,8 @@ def get_slot_info(slot_id):
                 state = pickle.load(f)
                 p_name = state.player.name
                 kill_count = len(state.defeated_bosses)
-                
-                # 取得難度名稱，如果舊存檔沒有 difficulty_lv 屬性，預設為普通
                 diff_lv = getattr(state, 'difficulty_lv', 2) 
                 diff_name = DIFFICULTY_SETTINGS.get(diff_lv, {}).get("name", "未知")
-                
                 return f"{p_name} (討伐: {kill_count}/5) [{diff_name}]"
         except:
             return "檔案損毀"
@@ -118,10 +112,9 @@ def load_game_menu():
         else:
             print("無效的輸入。")
 
-# --- NLP 結局生成 ---
+# --- NLP 生成功能 ---
 
 def generate_ending_story(game_state):
-    # 動態匯入 client 確保拿到最新設定的 key
     from mini_training_game import client
     
     if not client:
@@ -130,8 +123,6 @@ def generate_ending_story(game_state):
 
     p = game_state.player
     boss_names = [b['name'] for b in game_state.bosses if b['id'] in game_state.defeated_bosses]
-    
-    # 取得難度名稱
     diff_name = DIFFICULTY_SETTINGS[game_state.difficulty_lv]["name"]
 
     print("\n✨ 正在撰寫你的傳奇史詩 (AI 生成中)...✨")
@@ -140,7 +131,7 @@ def generate_ending_story(game_state):
         f"請寫一段壯闊的奇幻小說結局，描述勇者 {p.name} 在「{diff_name}」的殘酷難度下，"
         f"擊敗了所有魔王，拯救了異世界。\n"
         f"勇者屬性：體重 {p.weight}kg，擅長部位包含胸、背、腿。\n"
-        f"總訓練累積次數：胸{p.training_chest}次, 腿{p.training_leg}次。\n"
+        f"總訓練累積次數：胸{p.training_chest}次, 腿{p.training_leg}次, 背{p.training_back}次。\n"
         f"擊敗的魔王名單：{', '.join(boss_names)}。\n"
         f"請描述他如何運用強壯的肉體和堅強的意志帶來和平，並提到他最後回到原本的世界或是留在異世界成為傳說。"
         f"字數約 200-300 字。"
@@ -166,6 +157,64 @@ def generate_ending_story(game_state):
         print(f"AI 生成失敗: {e}")
         input("按 Enter 結束...")
 
+# [新功能] 故事總攬 (生成 .txt)
+def do_story_review(game_state):
+    from mini_training_game import client
+    
+    if not client:
+        print("\n⚠️ 請先設定 API Key 才能生成故事日誌！")
+        time.sleep(1.5)
+        return
+
+    p = game_state.player
+    alive_count = 5 - len(game_state.defeated_bosses)
+    defeated_list = [b['name'] for b in game_state.bosses if b['id'] in game_state.defeated_bosses]
+    boss_text = ", ".join(defeated_list) if defeated_list else "尚未擊敗任何魔王"
+    diff_name = DIFFICULTY_SETTINGS[game_state.difficulty_lv]["name"]
+
+    print("\n📜 正在整理冒險日誌 (AI 撰寫中)...")
+
+    prompt = (
+        f"請為異世界勇者 {p.name} 撰寫一份「冒險日誌總結」。\n"
+        f"目前狀態：\n"
+        f"- 挑戰難度：{diff_name}\n"
+        f"- 身體素質：{p.weight}kg, 訓練累積(胸{p.training_chest}, 腿{p.training_leg}, 背{p.training_back})\n"
+        f"- 戰績：已擊敗 {boss_text}，剩餘 {alive_count} 隻魔王。\n"
+        f"請用「吟遊詩人」的語氣，總結他目前的旅程進度與訓練成果，並給予他繼續前進的鼓勵。\n"
+        f"字數約 150 字。"
+    )
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+        )
+        story_text = response.choices[0].message.content.strip()
+        
+        # 顯示在螢幕
+        print("-" * 40)
+        print(f"【{p.name} 的冒險日誌】")
+        slow_print(story_text, speed=0.02)
+        print("-" * 40)
+
+        # 寫入檔案
+        filename = f"story_review_{p.name}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"=== {p.name} 的冒險日誌 ===\n")
+            f.write(f"時間：{time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"難度：{diff_name}\n")
+            f.write("-" * 30 + "\n")
+            f.write(story_text)
+            f.write("\n" + "-" * 30 + "\n")
+        
+        print(f"\n✅ 日誌已生成並存檔為: {filename}")
+        input("按 Enter 返回...")
+
+    except Exception as e:
+        print(f"AI 生成失敗: {e}")
+        input("按 Enter 返回...")
+
 # --- 遊戲內容 ---
 
 def intro_story(player):
@@ -188,7 +237,6 @@ def do_rest(game_state):
     p = game_state.player
     print("\n💤 你找了一間旅館休息...")
     time.sleep(1)
-    # 恢復
     p.energy_chest = p.chest_max
     p.energy_shoulder = p.shoulder_max
     p.energy_hand = p.hand_max
@@ -196,27 +244,21 @@ def do_rest(game_state):
     p.energy_belly = p.belly_max
     p.energy_leg = p.leg_max
     print("✨ 體力已完全恢復！狀態絕佳！")
-    
     save_game(game_state)
     input("按 Enter 返回...")
 
 def do_fight(game_state):
-    # 1. 篩選魔王
     alive_bosses = [b for b in game_state.bosses if b['id'] not in game_state.defeated_bosses]
-    
     if not alive_bosses:
         print("\n🎉 所有的魔王都已被你擊敗！")
         return
 
-    # 2. 隨機遭遇
     boss = random.choice(alive_bosses)
-    
-    # 取得難度設定
     lv = game_state.difficulty_lv
     diff_setting = DIFFICULTY_SETTINGS[lv]
     time_per_char = diff_setting["time"]
     diff_name = diff_setting["name"]
-    
+
     clear_screen()
     print(f"\n⚔️  遭遇強敵！ {boss['title']} {boss['name']}")
     print(f"惡行：{boss['deed']}")
@@ -226,27 +268,22 @@ def do_fight(game_state):
     print(f"----------------------------------------")
     
     choice = input("按 Enter 戰鬥，輸入 'exit' 逃跑: ").strip().lower()
-    
     if choice == 'exit':
         print("你選擇了戰略性撤退...")
         time.sleep(1)
         return
 
-    # 4. 戰鬥迴圈
     current_hp = boss['hp']
     round_count = 1
     
     while current_hp > 0:
         print(f"\n🔥 Round {round_count} (魔王血量: {current_hp})")
-        
-        # 呼叫打字遊戲 (傳入難度秒數)
         result = quick_reaction_game_strict(boss['word_len'], seconds_per_char=time_per_char)
         
-        # 檢查回傳值
         if result == 'escape':
             print("\n💨 你在戰鬥中途轉身逃跑了！")
             time.sleep(1)
-            return # 直接結束函式，回到主選單
+            return 
 
         elif result is True:
             current_hp -= 1
@@ -257,7 +294,6 @@ def do_fight(game_state):
         round_count += 1
         time.sleep(0.5)
     
-    # 5. 勝利
     print(f"\n🏆 恭喜！你擊敗了 {boss['name']}！")
     game_state.defeated_bosses.append(boss['id'])
     save_game(game_state)
@@ -265,22 +301,16 @@ def do_fight(game_state):
     if len(game_state.defeated_bosses) == 5:
         input("🎉 全破！按 Enter 進入結局...")
         generate_ending_story(game_state)
-        sys.exit() # 結束遊戲
+        sys.exit() 
     else:
         input("按 Enter 返回營地...")
 
 def do_gym(game_state):
     print("\n🏋️  進入異世界道館...")
-    
-    # 呼叫 AI 訓練
     trained_list = start_training_session(game_state.player)
-    
-    # 增加訓練次數
-    p = game_state.player
     if trained_list:
         print("\n📈 結算訓練成果：")
         p = game_state.player
-        
         for part in trained_list:
             if part == "胸部": p.training_chest += 1
             elif part == "背部": p.training_back += 1
@@ -288,9 +318,7 @@ def do_gym(game_state):
             elif part == "手臂": p.training_hand += 1
             elif part == "肩部": p.training_shoulder += 1
             elif part == "核心": p.training_belly += 1
-            
             print(f"  - {part} 熟練度 +1")
-            
         save_game(game_state)
     else:
         print("沒有進行任何訓練。")
@@ -310,8 +338,6 @@ def do_archive(game_state):
 def do_status(game_state):
     p = game_state.player
     alive_count = 5 - len(game_state.defeated_bosses)
-    
-    # 顯示遊戲難度
     diff_name = DIFFICULTY_SETTINGS[game_state.difficulty_lv]["name"]
     
     print(f"\n📊 --- {p.name} 的狀態 --- 📊")
@@ -333,14 +359,10 @@ def do_status(game_state):
     
     input("\n按 Enter 返回...")
 
-# --- 主程式入口 ---
+# --- Main ---
 
 def main():
     ensure_save_dir()
-    
-    # [修改重點] 這裡加入詢問 API Key 的邏輯
-    # 這樣只有在程式剛啟動時會問一次
-    # 只要你不按 Ctrl+C 退出程式，回到選單都不會再問
     
     clear_screen()
     print("=== 🔑 初始化設定 ===")
@@ -408,7 +430,6 @@ def main():
                 player.training_shoulder = 0
                 player.training_belly = 0
 
-            # 初始化 GameState
             game_state = GameState(player, slot_id=slot, difficulty_lv=diff)
             
             intro_story(player)
@@ -430,6 +451,7 @@ def game_loop(game_state):
         print("(2) 🏋️  道館訓練")
         print("(3) 📜 魔王檔案")
         print("(4) 📊 屬性查看")
+        print("(5) 📖 故事總攬 (生成日誌)")
         print("(Q) 回主選單")
         print("-" * 30)
         
@@ -440,7 +462,8 @@ def game_loop(game_state):
         elif action == '2': do_gym(game_state)
         elif action == '3': do_archive(game_state)
         elif action == '4': do_status(game_state)
-        elif action == 'Q': return # 回到 main() 的選單
+        elif action == '5': do_story_review(game_state)
+        elif action == 'Q': return 
 
 if __name__ == "__main__":
     main()
