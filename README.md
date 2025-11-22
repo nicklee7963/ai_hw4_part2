@@ -85,6 +85,10 @@ pip install pandas numpy scikit-learn openai inputimeout joblib
 python3 main_game.py
 ```
 
+### 3. 選擇存檔
+請選擇開啟新檔，並覆蓋test1, test2 or test3 
+nick為通關檔案
+
 
 
 
