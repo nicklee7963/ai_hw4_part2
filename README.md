@@ -73,3 +73,8 @@
 
 ```bash
 pip install pandas numpy scikit-learn openai inputimeout joblib
+
+
+### 2. 開始遊戲
+```bash
+python3 main_game.py
